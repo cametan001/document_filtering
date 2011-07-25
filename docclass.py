@@ -131,7 +131,7 @@ class classifier:
         # res = self.cur.execute("""select count from fc where feature = ? and category = ?""", \
         #                        (f, cat)).fetchone()
 
-        res = self.session.query(FC).filter_by(feature = f, category = cat).first()
+        res = self.session.query(FC).filter(FC.feature == f).filter(FC.category == cat).first()
         
         if res == None:
             return 0
@@ -148,7 +148,7 @@ class classifier:
         # res = self.cur.execute("""select count from cc where category = ?""", \
         #                        (cat)).fetchone()
         
-        res = self.session.query(CC).filter_by(category = cat).first()
+        res = self.session.query(CC).filter(CC.category == cat).first()
         
         if res == None:
             return 0
