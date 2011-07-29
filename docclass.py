@@ -4,14 +4,14 @@
 import re
 import math
 import splitter
-# import sqlite3 as sqlite
+import sqlite3 as sqlite
 import os.path
-from sqlalchemy import create_engine
-from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relation, backref
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql import func
+# from sqlalchemy import create_engine
+# from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey
+# from sqlalchemy.ext.declarative import declarative_base
+# from sqlalchemy.orm import relation, backref
+# from sqlalchemy.orm import sessionmaker
+# from sqlalchemy.sql import func
 
 def sampletrain(cl):
     dic = { \
@@ -31,44 +31,44 @@ def getwords(doc):
     # ユニークな単語のみの集合を返す
     return dict([(w, 1) for w in words])
 
-# def getwords(doc):
-#     words = [s.lower() for s in splitter.split(doc) if len(s) > 2 and len(s) < 20]
-#     # ユニークな単語の集合を返す
-#     return dict([(w, 1) for w in words])
+def getwords(doc):
+    words = [s.lower() for s in splitter.split(doc) if len(s) > 2 and len(s) < 20]
+    # ユニークな単語の集合を返す
+    return dict([(w, 1) for w in words])
 
-Base = declarative_base()
-class FC(Base):
-    __tablename__ = 'fc'
+# Base = declarative_base()
+# class FC(Base):
+#     __tablename__ = 'fc'
 
-    id = Column(Integer, primary_key = True)
-    feature = Column(String)
-    category = Column(String)
-    count = Column(Integer)
+#     id = Column(Integer, primary_key = True)
+#     feature = Column(String)
+#     category = Column(String)
+#     count = Column(Integer)
 
-    def __init__(self, feature, category, count):
-        self.feature = feature
-        self.category = category
-        self.count = count
+#     def __init__(self, feature, category, count):
+#         self.feature = feature
+#         self.category = category
+#         self.count = count
 
-    def __repr__(self):
-        return "<FC('%s', '%s', '%s')>" % (self.feature, self.category, self.count)
+#     def __repr__(self):
+#         return "<FC('%s', '%s', '%s')>" % (self.feature, self.category, self.count)
 
-class CC(Base):
-    __tablename__ = 'cc'
+# class CC(Base):
+#     __tablename__ = 'cc'
 
-    id = Column(Integer, primary_key = True)
-    category = Column(String)
-    count = Column(Integer)
-    fc_id = Column(Integer, ForeignKey('fc.id'))
+#     id = Column(Integer, primary_key = True)
+#     category = Column(String)
+#     count = Column(Integer)
+#     fc_id = Column(Integer, ForeignKey('fc.id'))
 
-    fc = relation(FC, backref = backref('cc', order_by = id))
+#     fc = relation(FC, backref = backref('cc', order_by = id))
 
-    def __init__(self, category, count):
-        self.category = category
-        self.count = count
+#     def __init__(self, category, count):
+#         self.category = category
+#         self.count = count
 
-    def __repr__(self):
-        return "<CC('%s', '%s')>" % (self.category, self.count)
+#     def __repr__(self):
+#         return "<CC('%s', '%s')>" % (self.category, self.count)
 
 class classifier:
     def __init__(self, getfeatures, filename = None):
@@ -78,18 +78,18 @@ class classifier:
         self.cc = {}
         self.getfeatures = getfeatures
 
-    # def setdb(self, dbfile):
-    #     con = sqlite.connect(os.path.join(os.path.dirname(__file__), 'DATABASE/%s' % dbfile))
-    #     self.cur = con.cursor()
-    #     self.cur.execute('create table if not exists fc(feature, category, count)')
-    #     self.cur.execute('create table if not exists cc(category, count)')
-
     def setdb(self, dbfile):
-        url = os.path.join(os.path.dirname(__file__), 'DATABASE/%s' % dbfile)
-        engine = create_engine('sqlite:///%s' % url, echo = True)
-        Base.metadata.create_all(engine)
-        Session = sessionmaker(bind = engine)
-        self.session = Session()
+        self.con = sqlite.connect(os.path.join(os.path.dirname(__file__), 'DATABASE/%s' % dbfile))
+        self.cur = self.con.cursor()
+        self.cur.execute('create table if not exists fc(feature, category, count)')
+        self.cur.execute('create table if not exists cc(category, count)')
+
+    # def setdb(self, dbfile):
+    #     url = os.path.join(os.path.dirname(__file__), 'DATABASE/%s' % dbfile)
+    #     engine = create_engine('sqlite:///%s' % url, echo = False)
+    #     Base.metadata.create_all(engine)
+    #     Session = sessionmaker(bind = engine)
+    #     self.session = Session()
 
     # 特徴 / カテゴリのカウントを増やす
     def incf(self, f, cat):
@@ -98,29 +98,33 @@ class classifier:
         # self.fc[f][cat] += 1
         count = self.fcount(f, cat)
         if count == 0:
-            # self.cur.execute("""insert into fc (feature, category, count) \
-            # values (?, ?, 1)""", \
-            #                  (f, cat))
-            self.fc[f] = FC(f, cat, 1)
-            self.session.add(self.fc[f])
+            self.cur.execute("""insert into fc (feature, category, count) \
+            values (:feature, :category, 1)""" \
+                             , {"feature" : f, "category" : cat})
+            # self.fc[f] = { cat : FC(f, cat, 1) }
+            # self.session.add(self.fc[f][cat])
         else:
-            # self.cur.execute("""update fc set count = ? where feature = ? and category = ? """, \
-            #                  (count + 1, f, cat))
-            self.fc[f].count += 1
+            self.cur.execute("""update fc set count = :count \
+            where feature = :feature and category = :category """  \
+                             , {"count" : count + 1, "feature" : f, "category" : cat})
+            # self.fc[f][cat].count += 1
 
     # カテゴリのカウントを増やす
     def incc(self, cat):
         # self.cc.setdefault(cat, 0)
         # self.cc[cat] += 1
         count = self.catcount(cat)
+        print count
+        # print type(count)
         if count == 0:
-            # self.cur.execute("""insert into cc (category, count) values (?, 1)""", cat)
-            self.cc[cat] = CC(cat, 1)
-            self.session.add(self.cc[cat])
+            self.cur.execute("""insert into cc (category, count) values (:category, 1)""" \
+                             , {"category" : cat})
+            # self.cc[cat] = CC(cat, 1)
+            # self.session.add(self.cc[cat])
         else:
-            # self.cur.execute("""update cc set count = ? where category = ?""", \
-            #                  (count + 1, cat))
-            self.cc[cat].count += 1
+            self.cur.execute("""update cc set count = :count where category = :category""" \
+                             , {"count" : count + 1, "category" : cat})
+            # self.cc[cat].count += 1
 
     # あるカテゴリの中に特徴が現れた数
     def fcount(self, f, cat):
@@ -128,15 +132,15 @@ class classifier:
         #     return float(self.fc[f][cat])
         # else:
         #     return 0.0
-        # res = self.cur.execute("""select count from fc where feature = ? and category = ?""", \
-        #                        (f, cat)).fetchone()
+        res = self.cur.execute("""select count from fc where feature = :feature and category = :category""" \
+                               , {"feature" : f, "category" : cat}).fetchone()
 
-        res = self.session.query(FC).filter(FC.feature == f).filter(FC.category == cat).first()
-        
+        # res = self.session.query(FC).filter(FC.feature == f).filter(FC.category == cat).first()
+
         if res == None:
             return 0
         else:
-            return res.count
+            return float(res[0])
 
     # あるカテゴリの中のアイテムたちの数
     def catcount(self, cat):
@@ -145,15 +149,15 @@ class classifier:
         # else:
         #     return 0
 
-        # res = self.cur.execute("""select count from cc where category = ?""", \
-        #                        (cat)).fetchone()
-        
-        res = self.session.query(CC).filter(CC.category == cat).first()
-        
+        res = self.cur.execute("""select count from cc where category = :category""" \
+                               , {"category" : cat}).fetchone()
+
+        # res = self.session.query(CC).filter(CC.category == cat).first()
+
         if res == None:
             return 0
         else:
-            return res.count
+            return float(res[0])
 
     # アイテムたちの総数
     def totalcount(self):
@@ -162,14 +166,13 @@ class classifier:
     # すべてのカテゴリたちのリスト
     def categories(self):
         # return self.cc.keys()
-        # cur = self.cur.execute("""select category from cc""")
-        cur = self.session.query(CC.category)
-        # return [d[0] for d in cur]
-        return cur
+        cur = self.cur.execute("""select category from cc""")
+        # cur = self.session.query(CC.category).all()
+        return [d[0] for d in cur]
 
     def totalcount(self):
-        # res = self.cur.execute("""select sum(count) from cc""").fetchone()
-        res = self.session.query(func.sum(CC.count)).first()
+        res = self.cur.execute("""select sum(count) from cc""").fetchone()
+        # res = self.session.query(func.sum(CC.count)).first()
         if res == None:
             return 0
         else:
@@ -183,7 +186,7 @@ class classifier:
         [self.incf(f, cat) for f in features]
         # このカテゴリのカウントを増やす
         self.incc(cat)
-        self.session.commit()
+        self.con.commit()
 
     def fprob(self, f, cat):
         if self.catcount(cat) == 0:
@@ -214,7 +217,7 @@ class naivebayes(classifier):
             return 1.0
         else:
             return self.thresholds[cat]
-    
+
     def docprob(self, item, cat):
         features = self.getfeatures(item)
         # すべての特徴の確率を掛け合わせる
@@ -234,19 +237,16 @@ class naivebayes(classifier):
         max = 0.0
         for cat in self.categories():
             probs[cat] = self.prob(item, cat)
-            if probs[cat] > max:
+            if probs[cat] >= max:
                 max = probs[cat]
                 best = cat
 
         # 確率がしきい値 * 2番目にベストなものを超えているか確認する
         for cat in probs:
-            if cat == best:
-                continue
-            elif probs[cat] * self.getthreshold(best) > probs[best]:
-                return default
-            else:
-                return best
-            
+            if cat == best: continue
+            if probs[cat] * self.getthreshold(best) > probs[best]: return default
+        return best
+
 class fisherclassifier(classifier):
 
     def __init__(self, getfeatures):
@@ -261,7 +261,7 @@ class fisherclassifier(classifier):
             return 0
         else:
             return self.minimums[cat]
-            
+
     def cprob(self, f, cat):
         # このカテゴリの中でのこの特徴の頻度
         clf = self.fprob(f, cat)
@@ -302,7 +302,7 @@ class fisherclassifier(classifier):
                 best = c
                 max = p
         return best
-    
+
 if __name__ == '__main__':
     cl = fisherclassifier(getwords)
     cl.setdb('test1.db')
@@ -310,3 +310,5 @@ if __name__ == '__main__':
     cl2 = naivebayes(getwords)
     cl2.setdb('test1.db')
     print cl2.classify('quick money')
+
+
